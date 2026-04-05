@@ -12,7 +12,7 @@ The ask_callback is an async function the bot passes in to post questions
 and wait for answers interactively.
 """
 
-import re
+import ollama
 import subprocess
 import urllib.request
 import urllib.parse
@@ -92,11 +92,8 @@ def _best_model() -> str:
 def _call_ollama(prompt: str) -> str:
     model = _best_model()
     try:
-        r = subprocess.run(
-            ["ollama", "run", model],
-            input=prompt, capture_output=True, text=True, timeout=60
-        )
-        return r.stdout.strip()
+        response = ollama.generate(model=model, prompt=prompt)
+        return response['response'].strip()
     except Exception as e:
         return f"[ERROR] {e}"
 

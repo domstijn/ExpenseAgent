@@ -3,7 +3,7 @@ Analysis Agent — spending trends, anomaly detection, savings advice.
 Pure logic for anomalies, LLM for narrative and savings advice.
 """
 
-import subprocess
+import ollama
 import json
 import re
 from datetime import datetime, date
@@ -18,11 +18,9 @@ OLLAMA_MODEL = "phi3:mini"
 
 def _call_ollama(prompt: str) -> str:
     try:
-        result = subprocess.run(
-            ["ollama", "run", OLLAMA_MODEL],
-            input=prompt, capture_output=True, text=True, timeout=180
-        )
-        return result.stdout.strip()
+        # Using ollama.generate provides clean text output directly
+        response = ollama.generate(model=OLLAMA_MODEL, prompt=prompt)
+        return response['response'].strip()
     except Exception as e:
         return f"[ERROR] {e}"
 

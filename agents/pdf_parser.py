@@ -9,7 +9,7 @@ Format observed:
 """
 
 import re
-import subprocess
+import ollama
 import json
 from datetime import datetime
 
@@ -24,11 +24,8 @@ OLLAMA_MODEL = "phi3:mini"
 
 def _call_ollama(prompt: str) -> str:
     try:
-        result = subprocess.run(
-            ["ollama", "run", OLLAMA_MODEL],
-            input=prompt, capture_output=True, text=True, timeout=180
-        )
-        return result.stdout.strip()
+        response = ollama.generate(model=OLLAMA_MODEL, prompt=prompt)
+        return response['response'].strip()
     except Exception as e:
         return f"[ERROR] {e}"
 
