@@ -777,6 +777,7 @@ HELP_TEXT = """**Expense Agent — Commands**
 ```
 !week              — this week's spending breakdown
 !month             — this month by category
+!last [n]          — show last n expenses (max 19)
 !top               — top 10 expenses this month
 !categories        — all categories with budget bars
 !summary           — AI summary of last 30 days
@@ -785,10 +786,11 @@ HELP_TEXT = """**Expense Agent — Commands**
 !digest            — generate weekly digest now
 !budget <cat> <€>  — set monthly budget for category
 !edit <id> category <name>
-                   — fix a category
-!last [n]          — show last n expenses (max 20)
+                   — fix a category (smart-maps keywords)
 !delete <id>       — delete an expense
 !recategorise      — re-run categorisation on uncategorised transactions
+!vendors           — see learned vendor-to-category rules
+!forgetrule <name> — remove a learned vendor rule
 ```
 **Log an expense:**
 • Send a receipt photo or payment screenshot
