@@ -132,6 +132,32 @@ def check_budget_alerts(category_totals: list) -> list:
 
     return alerts
 
+def chat_with_context(user_query: str) -> str:
+    """Free-form chat with the LLM about the user's financial data."""
+    # Gather snapshot for context
+    cat_totals = db.get_category_totals(days=30)
+    total_30d = sum(r["total"] for r in cat_totals)
+    recent = db.get_last_expenses(limit=5)
+    
+    # Format context for the LLM
+    ctx_cats = "\n".join([f"- {r['category']}: €{r['total']:.2f}" for r in cat_totals[:5]])
+    ctx_recent = "\n".join([f"- €{e['amount']:.2f} at {e['vendor'] or 'Unknown'} ({e['date']})" for e in recent])
+    
+    prompt = f"""You are a helpful personal finance assistant. 
+Here is the user's current financial snapshot (last 30 days):
+Total Spent: €{total_30d:.2f}
+Top Categories:
+{ctx_cats if ctx_cats else "None yet"}
+
+Recent Transactions:
+{ctx_recent if ctx_recent else "None yet"}
+
+User Question: {user_query}
+
+Answer the user directly and concisely in Discord format. If the question is general, feel free to answer normally while keeping their finances in mind."""
+
+    return _call_ollama(prompt)
+
 
 # ── Trend analysis ────────────────────────────────────────────────────────────
 

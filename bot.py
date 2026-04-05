@@ -758,6 +758,19 @@ async def on_message(message: discord.Message):
                 preview = text[:1500] if text else "Empty — no text layer found (scanned PDF?)"
                 await send_long(message.channel, f"```\n{preview}\n```")
             return
+        
+    if tl.startswith("!ask"):
+        query = text[4:].strip()
+        if not query:
+            await message.channel.send("❓ **Usage:** `!ask <your question>`\nExample: `!ask why is my Food & Dining so high?` or `!ask how can I save €100 next month?`")
+            return
+            
+        await message.channel.send("🤔 Thinking...")
+        async with message.channel.typing():
+            # Use run_in_executor to keep the bot responsive while the LLM works
+            resp = await loop.run_in_executor(None, analysis.chat_with_context, query)
+        await send_long(message.channel, resp)
+        return
 
     # ── Natural language expense entry ────────────────────────────────────────
     data = vision.extract_from_text(text)
@@ -805,6 +818,7 @@ HELP_TEXT = """**Expense Agent — Commands**
 !recategorise      — re-run categorisation on uncategorised transactions
 !vendors           — see learned vendor-to-category rules
 !forgetrule <name> — remove a learned vendor rule
+!ask <question>    — chat with the AI about your finances
 ```
 **Log an expense:**
 • Send a receipt photo or payment screenshot
