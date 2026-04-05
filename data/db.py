@@ -308,3 +308,15 @@ def _vendor_key(vendor: str) -> str:
     """Normalise vendor name for consistent matching."""
     import re
     return re.sub(r"\s+", " ", vendor.lower().strip())
+
+def get_last_expenses(limit: int = 10) -> list:
+    """Return the last N confirmed expenses."""
+    conn = get_conn()
+    rows = [dict(r) for r in conn.execute("""
+        SELECT * FROM expenses
+        WHERE confirmed = 1
+        ORDER BY date DESC, id DESC
+        LIMIT ?
+    """, (limit,)).fetchall()]
+    conn.close()
+    return rows

@@ -556,6 +556,35 @@ async def on_message(message: discord.Message):
 
     # ── Commands ──────────────────────────────────────────────────────────────
 
+    if tl.startswith("!last"):
+        # Determine number of expenses (default 10, max 20)
+        parts = text.split()
+        n = 5
+        if len(parts) > 1:
+            try:
+                n = min(int(parts[1]), 20)
+            except ValueError:
+                n = 10
+
+        expenses = db.get_last_expenses(limit=n)
+        if not expenses:
+            await message.channel.send("No expenses found.")
+            return
+
+        lines = [f"**Last {len(expenses)} expenses:**", "```"]
+        # Concise table format
+        for e in expenses:
+            vendor = (e['vendor'] or e['description'] or 'unknown')
+            # Truncate vendor for mobile compatibility
+            vendor_short = vendor[:18] + ".." if len(vendor) > 20 else vendor
+            lines.append(
+                f"#{e['id']:<3} €{e['amount']:>7.2f} {vendor_short:<20} {e['date'][5:]}"
+            )
+        lines.append("```")
+        lines.append("*Note: Percentages show consumption of your monthly budget.*")
+        await send_long(message.channel, "\n".join(lines))
+        return
+
     if tl in ["!help", "help"]:
         await message.channel.send(HELP_TEXT)
         return
@@ -757,6 +786,7 @@ HELP_TEXT = """**Expense Agent — Commands**
 !budget <cat> <€>  — set monthly budget for category
 !edit <id> category <name>
                    — fix a category
+!last [n]          — show last n expenses (max 20)
 !delete <id>       — delete an expense
 !recategorise      — re-run categorisation on uncategorised transactions
 ```
