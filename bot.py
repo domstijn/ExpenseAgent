@@ -130,6 +130,27 @@ def format_category_breakdown(rows: list, title: str, days: int) -> str:
     lines.append("```")
     return "\n".join(lines)
 
+def clean_category(input_str: str) -> str:
+    input_lower = input_str.lower().strip()
+    
+    # 1. Check for exact matches in VALID_CATEGORIES
+    for cat in VALID_CATEGORIES:
+        if input_lower == cat.lower():
+            return cat
+            
+    # 2. Check keywords (borrowing logic from vision.py/categoriser.py)
+    # You can import KEYWORD_CATEGORIES or define a local mapping
+    mapping = {
+        "Food & Dining": ["drinks", "coffee", "lunch", "dinner", "bar", "pub"],
+        "Groceries": ["food", "supermarket", "snacks"]
+    }
+    
+    for cat, keywords in mapping.items():
+        if any(kw in input_lower for kw in keywords):
+            return cat
+            
+    return input_str.title() # Fallback to Title Case if no match
+
 
 # ── Scheduled jobs ────────────────────────────────────────────────────────────
 
@@ -611,13 +632,14 @@ async def on_message(message: discord.Message):
         return
 
     if tl.startswith("!edit "):
-        # !edit <id> category <name>
         parts = text.split(None, 3)
         if len(parts) == 4 and parts[2].lower() == "category":
             try:
                 exp_id = int(parts[1])
-                db.update_expense_category(exp_id, parts[3])
-                await message.channel.send(f"✅ Expense #{exp_id} category updated to **{parts[3]}**.")
+                # Clean and map the category before saving
+                new_cat = clean_category(parts[3]) 
+                db.update_expense_category(exp_id, new_cat)
+                await message.channel.send(f"✅ Expense #{exp_id} updated to **{new_cat}**.")
             except ValueError:
                 await message.channel.send("❓ Usage: `!edit <id> category <name>`")
         return
