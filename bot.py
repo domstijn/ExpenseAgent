@@ -770,45 +770,58 @@ Shopping, Entertainment, Subscriptions, Utilities, Travel,
 Education, Personal Care, Other
 """
 
-# ----- GEMINI --------
 class ExpenseCorrectionModal(discord.ui.Modal, title="Complete Expense Details"):
     amount_input = discord.ui.TextInput(label="Amount (€)", placeholder="e.g. 12.50", required=False)
     vendor_input = discord.ui.TextInput(label="Vendor", placeholder="e.g. Starbucks", required=False)
+    # New category input field
+    category_input = discord.ui.TextInput(label="Category (optional)", placeholder="e.g. Food & Dining", required=False)
     desc_input   = discord.ui.TextInput(label="Description", style=discord.TextStyle.paragraph, required=False)
 
     def __init__(self, data, original_msg):
         super().__init__()
         self.data = data
         self.original_msg = original_msg
-        # Pre-fill with what we already have
         if data.get("amount"): self.amount_input.default = str(data["amount"])
         if data.get("vendor"): self.vendor_input.default = data["vendor"]
+        if data.get("category"): self.category_input.default = data["category"]
         if data.get("description"): self.desc_input.default = data["description"]
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
-            # 1. Update the data dictionary with new values
+            # 1. Update basic fields
             if self.amount_input.value:
                 self.data["amount"] = float(self.amount_input.value.replace(',', '.'))
-            self.data["vendor"] = self.vendor_input.value or self.data.get("vendor")
-            self.data["description"] = self.desc_input.value or self.data.get("description")
             
-            # 2. Log to database
+            vendor_name = self.vendor_input.value or self.data.get("vendor")
+            self.data["vendor"] = vendor_name
+            self.data["description"] = self.desc_input.value or self.data.get("description")
+
+            # 2. Derive Category: Manual Input > Learned Rules > Keywords > Default
+            manual_cat = self.category_input.value.strip()
+            if manual_cat:
+                # Use the clean_category helper logic to map things like "drinks" -> "Food & Dining"
+                self.data["category"] = clean_category(manual_cat) 
+            else:
+                # Try to auto-derive from vendor name using existing agent logic
+                derived = categoriser.from_vendor_rules(vendor_name) or \
+                          categoriser.from_keywords(vendor_name, self.data.get("description", ""))
+                self.data["category"] = derived or "Other"
+
+            # 3. Log to database
             expense_id = db.log_expense(
                 amount=self.data.get("amount", 0.0),
                 vendor=self.data.get("vendor"),
-                category=self.data.get("category", "Other"),
+                category=self.data.get("category"),
                 description=self.data.get("description"),
                 date_str=self.data.get("date"),
                 source="interactive"
             )
 
-            # 3. EDIT the original message to remove buttons
             confirmation_text = format_expense_confirmation(self.data, expense_id)
             await interaction.response.edit_message(content=confirmation_text, view=None)
 
         except ValueError:
-            await interaction.response.send_message("❌ Invalid amount. Please use numbers.", ephemeral=True)
+            await interaction.response.send_message("❌ Invalid amount format.", ephemeral=True)
 
 class MissingInfoView(discord.ui.View):
     def __init__(self, data, message):
