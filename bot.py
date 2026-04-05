@@ -771,6 +771,41 @@ async def on_message(message: discord.Message):
             resp = await loop.run_in_executor(None, analysis.chat_with_context, query)
         await send_long(message.channel, resp)
         return
+    
+    if tl.startswith("!budgets"):
+        import calendar
+        categories = db.get_categories()
+        if not categories:
+            await message.channel.send("No categories defined yet.")
+            return
+
+        now = datetime.now()
+        _, days_in_month = calendar.monthrange(now.year, now.month)
+        days_left = max(1, days_in_month - now.day + 1)
+
+        lines = ["**📅 Monthly Budget Overview**", "```text"]
+        total_limit = 0
+        
+        for c in categories:
+            name   = c['name']
+            limit  = c.get('budget') or 0
+            emoji  = c.get('emoji', '💰')
+            total_limit += limit
+            
+            limit_str = f"€{limit:,.0f}" if limit > 0 else "---"
+            # Calculate daily allowance remaining for this category
+            daily = f"€{limit/days_in_month:,.2f}/d" if limit > 0 else ""
+            
+            lines.append(f"{emoji} {name[:12]:<12} : {limit_str:>7}  {daily}")
+
+        lines.append("-" * 32)
+        lines.append(f"TOTAL BUDGET   : €{total_limit:,.2f}")
+        lines.append(f"DAYS REMAINING : {days_left} days")
+        lines.append("```")
+        lines.append("*Use `!budget <cat> <€>` to set or change these limits.*")
+        
+        await message.channel.send("\n".join(lines))
+        return
 
     # ── Natural language expense entry ────────────────────────────────────────
     data = vision.extract_from_text(text)
@@ -812,6 +847,7 @@ HELP_TEXT = """**Expense Agent — Commands**
 !savings           — AI savings advice
 !digest            — generate weekly digest now
 !budget <cat> <€>  — set monthly budget for category
+!budgets           — view all monthly budget limits and daily allowances
 !edit <id> category <name>
                    — fix a category (smart-maps keywords)
 !delete <id>       — delete an expense
