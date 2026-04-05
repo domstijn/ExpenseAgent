@@ -106,17 +106,27 @@ def format_category_breakdown(rows: list, title: str, days: int) -> str:
     total = sum(r["total"] for r in rows)
     budgets = {c["name"]: c.get("budget") for c in db.get_categories()}
 
-    lines = [f"**{title}** — €{total:.2f} total\n```"]
+    # Header
+    lines = [f"**{title}** — €{total:.2f} total", "```"]
+    
     for r in rows:
-        cat    = r["category"]
+        cat = r["category"]
+        # Use emoji to save space and add visual flair
+        emoji = CAT_EMOJIS.get(cat, "💰")
         budget = budgets.get(cat)
-        bar    = ""
+        
+        # Narrower progress bar: 10 chars instead of 20
+        bar_str = ""
         if budget:
-            pct = min(int((r["total"] / budget) * 20), 20)
-            bar = f" {'█' * pct}{'░' * (20 - pct)} {r['total']/budget*100:.0f}%"
+            pct = min(int((r["total"] / budget) * 10), 10)
+            bar_str = f" {'█' * pct}{'░' * (10 - pct)} {r['total']/budget*100:.0f}%"
+        
+        # Reduced padding: 12 chars for category instead of 22
+        # This keeps the total line width around 38-42 chars
         lines.append(
-            f"{cat:<22} €{r['total']:>7.2f}  {r['count']}x{bar}"
+            f"{emoji} {cat[:12]:<12} €{r['total']:>7.2f}{bar_str}"
         )
+        
     lines.append("```")
     return "\n".join(lines)
 
