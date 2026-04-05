@@ -754,14 +754,14 @@ class ExpenseCorrectionModal(discord.ui.Modal, title="Complete Expense Details")
         if data.get("description"): self.desc_input.default = data["description"]
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Update data with user input
         try:
+            # 1. Update the data dictionary with new values
             if self.amount_input.value:
                 self.data["amount"] = float(self.amount_input.value.replace(',', '.'))
             self.data["vendor"] = self.vendor_input.value or self.data.get("vendor")
             self.data["description"] = self.desc_input.value or self.data.get("description")
             
-            # Log the expense now that we have (more) info
+            # 2. Log to database
             expense_id = db.log_expense(
                 amount=self.data.get("amount", 0.0),
                 vendor=self.data.get("vendor"),
@@ -770,7 +770,11 @@ class ExpenseCorrectionModal(discord.ui.Modal, title="Complete Expense Details")
                 date_str=self.data.get("date"),
                 source="interactive"
             )
-            await interaction.response.send_message(format_expense_confirmation(self.data, expense_id))
+
+            # 3. EDIT the original message to remove buttons
+            confirmation_text = format_expense_confirmation(self.data, expense_id)
+            await interaction.response.edit_message(content=confirmation_text, view=None)
+
         except ValueError:
             await interaction.response.send_message("❌ Invalid amount. Please use numbers.", ephemeral=True)
 
