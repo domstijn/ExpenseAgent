@@ -107,7 +107,7 @@ def format_category_breakdown(rows: list, title: str, days: int) -> str:
     budgets = {c["name"]: c.get("budget") for c in db.get_categories()}
 
     # Header
-    lines = [f"**{title}** — €{total:.2f} total", "```"]
+    lines = [f"**{title}** — €{total:.2f} total\n", "```text"] # Added 'text'
     
     for r in rows:
         cat = r["category"]
@@ -528,16 +528,26 @@ async def on_message(message: discord.Message):
                         await att.save(tmp.name)
                         data = await loop.run_in_executor(None, vision.extract_from_image, tmp.name)
 
-                # --- ADD / REPLACE STARTING HERE ---
-                if data.get("amount") is None or data.get("vendor") is None:
+                # NEW: Check if ANY field is missing or uncertain
+                is_missing = (
+                    not data.get("amount") or 
+                    not data.get("vendor") or 
+                    data.get("category") in [None, "Other", "Uncategorised"]
+                )
+
+                if is_missing:
                     view = MissingInfoView(data, message)
+                    # Create a friendly string showing what we found vs what's missing
+                    amt = f"€{data.get('amount')}" if data.get('amount') else "???"
+                    vnd = data.get('vendor') or "???"
+                    cat = data.get('category') or "???"
+                    
                     await message.channel.send(
-                        "🔍 **Receipt parsed, but some info is missing.**\n"
-                        f"Amount: `{data.get('amount') or '???'}` | Vendor: `{data.get('vendor') or '???'}`",
+                        f"🔍 **Receipt parsed, but info is incomplete:**\n"
+                        f"Amount: `{amt}` | Vendor: `{vnd}` | Category: `{cat}`",
                         view=view
                     )
-                    return
-                # --- END OF NEW CODE ---
+                    return # Stop here and wait for the wizard
 
                 expense_id = db.log_expense(
                     amount=data["amount"], vendor=data.get("vendor"),
@@ -557,12 +567,11 @@ async def on_message(message: discord.Message):
     # ── Commands ──────────────────────────────────────────────────────────────
 
     if tl.startswith("!last"):
-        # Determine number of expenses (default 10, max 20)
         parts = text.split()
-        n = 5
+        n = 10
         if len(parts) > 1:
             try:
-                n = min(int(parts[1]), 20)
+                n = min(int(parts[1]), 19)
             except ValueError:
                 n = 10
 
@@ -571,8 +580,7 @@ async def on_message(message: discord.Message):
             await message.channel.send("No expenses found.")
             return
 
-        lines = [f"**Last {len(expenses)} expenses:**", "```"]
-        # Concise table format
+        lines = [f"**Last {len(expenses)} expenses:**", "```text"]
         for e in expenses:
             vendor = (e['vendor'] or e['description'] or 'unknown')
             # Truncate vendor for mobile compatibility
@@ -581,7 +589,7 @@ async def on_message(message: discord.Message):
                 f"#{e['id']:<3} €{e['amount']:>7.2f} {vendor_short:<20} {e['date'][5:]}"
             )
         lines.append("```")
-        lines.append("*Note: Percentages show consumption of your monthly budget.*")
+        # Footnote removed from here to prevent confusion
         await send_long(message.channel, "\n".join(lines))
         return
 
@@ -754,8 +762,21 @@ async def on_message(message: discord.Message):
     # ── Natural language expense entry ────────────────────────────────────────
     data = vision.extract_from_text(text)
     
-    if data.get("amount"):
-        # If we have the amount, log it normally as before
+    # NEW: Trigger wizard if amount, vendor, or category is missing/Other
+    is_missing = (
+        not data.get("amount") or 
+        not data.get("vendor") or 
+        data.get("category") in [None, "Other", "Uncategorised"]
+    )
+
+    if is_missing:
+        view = MissingInfoView(data, message)
+        await message.channel.send(
+            "❓ I couldn't capture all the details clearly. Would you like to complete them?",
+            view=view
+        )
+    else:
+        # All info is present, log normally
         expense_id = db.log_expense(
             amount=data["amount"], vendor=data.get("vendor"),
             category=data.get("category"), description=data.get("description"),
@@ -763,13 +784,6 @@ async def on_message(message: discord.Message):
             source="text", raw_text=text
         )
         await message.channel.send(format_expense_confirmation(data, expense_id))
-    else:
-        # If amount is missing, show the interactive buttons instead of a plain error
-        view = MissingInfoView(data, message)
-        await message.channel.send(
-            "❓ I couldn't find an amount in that message. Would you like to add it manually?",
-            view=view
-        )
 
 # ── Help text ─────────────────────────────────────────────────────────────────
 
