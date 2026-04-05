@@ -497,12 +497,16 @@ async def on_message(message: discord.Message):
                         await att.save(tmp.name)
                         data = await loop.run_in_executor(None, vision.extract_from_image, tmp.name)
 
-                if data.get("amount") is None:
+                # --- ADD / REPLACE STARTING HERE ---
+                if data.get("amount") is None or data.get("vendor") is None:
+                    view = MissingInfoView(data, message)
                     await message.channel.send(
-                        "⚠️ Couldn't read the amount from this image. "
-                        "Please type it manually: `spent €X at Vendor for description`"
+                        "🔍 **Receipt parsed, but some info is missing.**\n"
+                        f"Amount: `{data.get('amount') or '???'}` | Vendor: `{data.get('vendor') or '???'}`",
+                        view=view
                     )
                     return
+                # --- END OF NEW CODE ---
 
                 expense_id = db.log_expense(
                     amount=data["amount"], vendor=data.get("vendor"),
@@ -687,9 +691,10 @@ async def on_message(message: discord.Message):
             return
 
     # ── Natural language expense entry ────────────────────────────────────────
-    # If message looks like an expense description, parse and log it
     data = vision.extract_from_text(text)
+    
     if data.get("amount"):
+        # If we have the amount, log it normally as before
         expense_id = db.log_expense(
             amount=data["amount"], vendor=data.get("vendor"),
             category=data.get("category"), description=data.get("description"),
@@ -698,11 +703,12 @@ async def on_message(message: discord.Message):
         )
         await message.channel.send(format_expense_confirmation(data, expense_id))
     else:
+        # If amount is missing, show the interactive buttons instead of a plain error
+        view = MissingInfoView(data, message)
         await message.channel.send(
-            "❓ I couldn't find an amount in that message.\n"
-            "Try: `spent €12 at Panos for lunch` or send a receipt photo."
+            "❓ I couldn't find an amount in that message. Would you like to add it manually?",
+            view=view
         )
-
 
 # ── Help text ─────────────────────────────────────────────────────────────────
 
@@ -731,6 +737,71 @@ HELP_TEXT = """**Expense Agent — Commands**
 Shopping, Entertainment, Subscriptions, Utilities, Travel,
 Education, Personal Care, Other
 """
+
+# ----- GEMINI --------
+class ExpenseCorrectionModal(discord.ui.Modal, title="Complete Expense Details"):
+    amount_input = discord.ui.TextInput(label="Amount (€)", placeholder="e.g. 12.50", required=False)
+    vendor_input = discord.ui.TextInput(label="Vendor", placeholder="e.g. Starbucks", required=False)
+    desc_input   = discord.ui.TextInput(label="Description", style=discord.TextStyle.paragraph, required=False)
+
+    def __init__(self, data, original_msg):
+        super().__init__()
+        self.data = data
+        self.original_msg = original_msg
+        # Pre-fill with what we already have
+        if data.get("amount"): self.amount_input.default = str(data["amount"])
+        if data.get("vendor"): self.vendor_input.default = data["vendor"]
+        if data.get("description"): self.desc_input.default = data["description"]
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Update data with user input
+        try:
+            if self.amount_input.value:
+                self.data["amount"] = float(self.amount_input.value.replace(',', '.'))
+            self.data["vendor"] = self.vendor_input.value or self.data.get("vendor")
+            self.data["description"] = self.desc_input.value or self.data.get("description")
+            
+            # Log the expense now that we have (more) info
+            expense_id = db.log_expense(
+                amount=self.data.get("amount", 0.0),
+                vendor=self.data.get("vendor"),
+                category=self.data.get("category", "Other"),
+                description=self.data.get("description"),
+                date_str=self.data.get("date"),
+                source="interactive"
+            )
+            await interaction.response.send_message(format_expense_confirmation(self.data, expense_id))
+        except ValueError:
+            await interaction.response.send_message("❌ Invalid amount. Please use numbers.", ephemeral=True)
+
+class MissingInfoView(discord.ui.View):
+    def __init__(self, data, message):
+        super().__init__(timeout=120)
+        self.data = data
+        self.message = message
+
+    @discord.ui.button(label="Fill Missing Info", style=discord.ButtonStyle.primary)
+    async def fill(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ExpenseCorrectionModal(self.data, self.message))
+
+    @discord.ui.button(label="Skip & Log Anyway", style=discord.ButtonStyle.secondary)
+    async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Log with 0.0 or whatever exists
+        expense_id = db.log_expense(
+            amount=self.data.get("amount") or 0.0,
+            vendor=self.data.get("vendor") or "Unknown",
+            category=self.data.get("category") or "Other",
+            description=self.data.get("description"),
+            date_str=self.data.get("date")
+        )
+        await interaction.response.edit_message(
+            content=f"Logged with missing info (ID #{expense_id}).", 
+            view=None
+        )
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="❌ Logging cancelled.", view=None)
 
 
 # ── Run ───────────────────────────────────────────────────────────────────────
